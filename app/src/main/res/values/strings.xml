@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Voice Mate</string>
+    <string name="accessibility_description">এই সার্ভিসটি ভয়েস কমান্ডের মাধ্যমে স্ক্রিন স্ক্রল করতে সাহায্য করে।</string>
+</resources>
