@@ -52,7 +52,7 @@ object NotificationHelper {
         }
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_assistant_logo) // আপনার তৈরি করা লোগো ব্যবহার করা হলো
+            .setSmallIcon(R.drawable.ic_assistant_logo)
             .setContentTitle(title)
             .setContentText(message)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
@@ -61,7 +61,7 @@ object NotificationHelper {
         try {
             NotificationManagerCompat.from(context).notify(notificationId, builder.build())
             return "Notification shown."
-        } catch (e: SecurityException) {
+        } catch (_: SecurityException) {
             return "Permission denied."
         }
     }

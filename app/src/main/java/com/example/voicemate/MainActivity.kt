@@ -7,12 +7,12 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Button
+import android.widget.ImageButton
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
-import com.example.voicemate.helpers.AuthHelper
 import com.example.voicemate.service.BackgroundVoiceService
 
 class MainActivity : AppCompatActivity() {
@@ -29,20 +29,16 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // সেশন চেক (Logic 5)
-        if (!AuthHelper.isUserLoggedIn()) {
-            startActivity(Intent(this, LoginActivity::class.java))
-            finish()
-            return
-        }
-
         setContentView(R.layout.activity_main)
 
         val btnStop = findViewById<Button>(R.id.btnStopService)
         val btnExit = findViewById<Button>(R.id.btnExitApp)
         val btnOverlay = findViewById<Button>(R.id.btnOpenAccessibility)
-        val btnLogout = Button(this).apply { text = "Logout" } // ডাইনামিক বাটন লজিক চেক করার জন্য
+        val btnSettings = findViewById<ImageButton>(R.id.btnSettings)
+
+        btnSettings.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
 
         btnOverlay.text = "ওভারলে পারমিশন দিন"
         btnOverlay.setOnClickListener {
@@ -66,17 +62,11 @@ class MainActivity : AppCompatActivity() {
             stopVoiceService()
             finishAffinity()
         }
-        
-        // Logout লজিক (Logic 5)
-        // দ্রষ্টব্য: লেআউটে বাটন না থাকলে এটি কাজ করবে না, তাই আপনি লেআউটে একটি Logout বাটন যোগ করতে পারেন।
-        // এখানে আমি শুধু লজিকটি দিয়ে রাখছি।
     }
 
     override fun onResume() {
         super.onResume()
-        if (AuthHelper.isUserLoggedIn()) {
-            requestNeededPermissions()
-        }
+        requestNeededPermissions()
     }
 
     private fun requestNeededPermissions() {

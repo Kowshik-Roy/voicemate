@@ -11,11 +11,14 @@ import android.content.pm.ServiceInfo
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.voicemate.CommandProcessor
@@ -30,6 +33,7 @@ class BackgroundVoiceService : Service(), TextToSpeech.OnInitListener {
     private var tts: TextToSpeech? = null
     private val BENGALI_LOCALE = Locale("bn", "BD")
     private lateinit var audioManager: AudioManager
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     private var isWaitingForSearch = false
     private var searchTarget = ""
@@ -67,30 +71,35 @@ class BackgroundVoiceService : Service(), TextToSpeech.OnInitListener {
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {}
-            override fun onError(error: Int) { restartListening() }
+            override fun onError(error: Int) {
+                mainHandler.postDelayed({ restartListening() }, 500)
+            }
             override fun onResults(results: android.os.Bundle?) {
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 val spokenText = matches?.firstOrNull()?.lowercase(Locale.getDefault()) ?: ""
 
                 if (spokenText.isNotBlank()) {
-                    if (isWaitingForSearch && CommandProcessor.isACommand(spokenText)) {
-                        isWaitingForSearch = false
-                        searchTarget = ""
-                    }
+                    // যদি কোনো কমান্ড পাওয়া যায় (যেমন বন্ধ করো, ছবি তোলো), তবে সার্চ ওয়েটিং মোড অফ করে দিবে
+                    val isCommand = CommandProcessor.isACommand(spokenText)
 
-                    if (isWaitingForSearch) {
+                    if (isWaitingForSearch && !isCommand) {
                         handleSearchQuery(spokenText)
                     } else {
+                        isWaitingForSearch = false
                         val response = CommandProcessor.processCommand(this@BackgroundVoiceService, spokenText)
-                        speak(response)
                         
-                        if (response == "কি সার্চ করতে হবে?") {
+                        if (response.contains("কি সার্চ করতে হবে?")) {
                             isWaitingForSearch = true
                             searchTarget = if ("youtube" in spokenText || "ইউটিউব" in spokenText) "youtube" else "chrome"
+                            speak(response, true) 
+                        } else {
+                            speak(response)
+                            restartListening()
                         }
                     }
+                } else {
+                    restartListening()
                 }
-                restartListening()
             }
             override fun onPartialResults(partialResults: android.os.Bundle?) {}
             override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
@@ -98,7 +107,7 @@ class BackgroundVoiceService : Service(), TextToSpeech.OnInitListener {
 
         recognizerIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toString())
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "bn-BD")
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "bn-BD")
             putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, false)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
@@ -108,35 +117,66 @@ class BackgroundVoiceService : Service(), TextToSpeech.OnInitListener {
 
     private fun handleSearchQuery(query: String) {
         isWaitingForSearch = false
+        val encodedQuery = Uri.encode(query)
         val url = if (searchTarget == "youtube") {
-            "https://www.youtube.com/results?search_query=$query"
+            "https://www.youtube.com/results?search_query=$encodedQuery"
         } else {
-            "https://www.google.com/search?q=$query"
+            "https://www.google.com/search?q=$encodedQuery"
         }
         
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        startActivity(intent)
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+            speak("আমি $query সার্চ করছি।")
+        } catch (e: Exception) {
+            speak("দুঃখিত, সার্চ করা সম্ভব হয়নি।")
+        }
         
-        speak("আমি $query সার্চ করছি।")
         searchTarget = ""
+        mainHandler.postDelayed({ restartListening() }, 1000)
     }
 
     private fun startListening() {
-        try { speechRecognizer?.startListening(recognizerIntent) } catch (e: Exception) {}
+        mainHandler.post {
+            try {
+                speechRecognizer?.startListening(recognizerIntent)
+            } catch (e: Exception) {}
+        }
     }
 
     private fun restartListening() {
-        try {
-            speechRecognizer?.cancel()
-            startListening()
-        } catch (e: Exception) {}
+        mainHandler.post {
+            try {
+                speechRecognizer?.cancel()
+                startListening()
+            } catch (e: Exception) {}
+        }
     }
 
-    fun speak(text: String) {
+    fun speak(text: String, startListeningAfter: Boolean = false) {
         val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
         audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (maxVolume * 0.8).toInt(), 0)
-        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "VOICE_REPLY")
+        
+        if (startListeningAfter) {
+            tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) {
+                    mainHandler.post { speechRecognizer?.cancel() }
+                }
+                override fun onDone(utteranceId: String?) {
+                    mainHandler.postDelayed({ startListening() }, 300)
+                }
+                override fun onError(utteranceId: String?) {
+                    restartListening()
+                }
+            })
+            val params = android.os.Bundle()
+            params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "VOICE_OUT")
+            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "VOICE_OUT")
+        } else {
+            tts?.setOnUtteranceProgressListener(null)
+            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "VOICE_REPLY")
+        }
     }
 
     override fun onInit(status: Int) {
@@ -177,6 +217,7 @@ class BackgroundVoiceService : Service(), TextToSpeech.OnInitListener {
 
     override fun onDestroy() {
         instance = null
+        mainHandler.removeCallbacksAndMessages(null)
         speechRecognizer?.stopListening()
         speechRecognizer?.cancel()
         speechRecognizer?.destroy()

@@ -5,7 +5,7 @@ import android.content.Context
 object SmsHelper {
 
     fun sendSms(context: Context, phoneNumber: String, message: String): String {
-        // Feature disabled for now
+
         return "SMS ফিচারটি বর্তমানে বন্ধ আছে"
     }
 

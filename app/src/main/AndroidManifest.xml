@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <uses-feature
         android:name="android.hardware.camera"
@@ -27,11 +28,11 @@
         android:label="Voice Mate"
         android:roundIcon="@drawable/ic_assistant_logo"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AppCompat.Light.NoActionBar">
+        android:theme="@style/Theme.AppCompat.Light.NoActionBar"
+        android:extractNativeLibs="false">
 
-        <!-- Login Activity (Launcher) -->
         <activity
-            android:name="com.example.voicemate.LoginActivity"
+            android:name="com.example.voicemate.PermissionActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -39,12 +40,8 @@
             </intent-filter>
         </activity>
 
-        <activity android:name="com.example.voicemate.SetPasswordActivity" android:exported="false" />
-
-        <activity
-            android:name="com.example.voicemate.MainActivity"
-            android:exported="false" />
-
+        <activity android:name="com.example.voicemate.MainActivity" android:exported="false" />
+        <activity android:name="com.example.voicemate.SettingsActivity" android:exported="false" />
         <activity android:name="com.example.voicemate.camera.CameraActivity" android:exported="false" />
 
         <service

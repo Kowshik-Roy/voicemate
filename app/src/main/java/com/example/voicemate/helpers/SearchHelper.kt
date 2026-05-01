@@ -13,9 +13,22 @@ object SearchHelper {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
-            "Searching Google for $query"
+            "গুগলে $query সার্চ করা হচ্ছে"
         } catch (e: Exception) {
-            "Failed to search on Google."
+            "গুগল সার্চ করতে ব্যর্থ হয়েছে"
+        }
+    }
+
+    fun searchInYoutube(context: Context, query: String): String {
+        return try {
+            val url = "https://www.youtube.com/results?search_query=" + Uri.encode(query)
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            "ইউটিউবে $query সার্চ করা হচ্ছে"
+        } catch (e: Exception) {
+            "ইউটিউব সার্চ করতে ব্যর্থ হয়েছে"
         }
     }
 
@@ -33,9 +46,9 @@ object SearchHelper {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
-            "Opening website."
+            "ওয়েবসাইট ওপেন করা হচ্ছে"
         } catch (e: Exception) {
-            "Failed to open website."
+            "ওয়েবসাইট ওপেন করতে ব্যর্থ হয়েছে"
         }
     }
 }

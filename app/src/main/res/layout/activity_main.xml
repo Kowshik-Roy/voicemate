@@ -1,65 +1,83 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="20dp"
-    android:gravity="center"
     android:background="#F5F5F5"
     tools:context=".MainActivity">
 
-    <ImageView
-        android:layout_width="120dp"
-        android:layout_height="120dp"
-        android:layout_marginBottom="20dp"
-        android:contentDescription="App Logo"
-        android:src="@drawable/ic_assistant_logo" />
+    <ImageButton
+        android:id="@+id/btnSettings"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_alignParentEnd="true"
+        android:layout_margin="16dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@android:drawable/ic_menu_manage"
+        app:tint="#6200EE" />
 
-    <TextView
-        android:id="@+id/tvTitle"
-        android:layout_width="wrap_content"
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="ভয়েস অ্যাসিস্ট্যান্ট"
-        android:textSize="26sp"
-        android:textColor="#6200EE"
-        android:textStyle="bold"
-        android:layout_marginBottom="40dp" />
+        android:layout_centerInParent="true"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="20dp">
 
-    <Button
-        android:id="@+id/btnOpenAccessibility"
-        android:layout_width="250dp"
-        android:layout_height="60dp"
-        android:text="পারমিশন সেটআপ করুন"
-        android:backgroundTint="#4CAF50"
-        android:textColor="#FFFFFF"
-        android:layout_marginBottom="20dp" />
+        <ImageView
+            android:layout_width="120dp"
+            android:layout_height="120dp"
+            android:layout_marginBottom="20dp"
+            android:contentDescription="App Logo"
+            android:src="@drawable/ic_assistant_logo" />
 
-    <Button
-        android:id="@+id/btnStopService"
-        android:layout_width="250dp"
-        android:layout_height="60dp"
-        android:text="সার্ভিস বন্ধ করুন (Stop)"
-        android:backgroundTint="#FF9800"
-        android:textColor="#FFFFFF"
-        android:layout_marginBottom="20dp" />
+        <TextView
+            android:id="@+id/tvTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="40dp"
+            android:text="ভয়েস অ্যাসিস্ট্যান্ট"
+            android:textColor="#6200EE"
+            android:textSize="26sp"
+            android:textStyle="bold" />
 
-    <Button
-        android:id="@+id/btnExitApp"
-        android:layout_width="250dp"
-        android:layout_height="60dp"
-        android:text="অ্যাপ থেকে বের হন (Exit)"
-        android:backgroundTint="#F44336"
-        android:textColor="#FFFFFF" />
+        <Button
+            android:id="@+id/btnOpenAccessibility"
+            android:layout_width="250dp"
+            android:layout_height="60dp"
+            android:layout_marginBottom="20dp"
+            android:backgroundTint="#4CAF50"
+            android:text="পারমিশন সেটআপ করুন"
+            android:textColor="#FFFFFF" />
 
-    <TextView
-        android:id="@+id/tvStatus"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="অ্যাসিস্ট্যান্ট ব্যাকগ্রাউন্ডে চলছে..."
-        android:textSize="16sp"
-        android:layout_marginTop="40dp"
-        android:textColor="#757575" />
+        <Button
+            android:id="@+id/btnStopService"
+            android:layout_width="250dp"
+            android:layout_height="60dp"
+            android:layout_marginBottom="20dp"
+            android:backgroundTint="#FF9800"
+            android:text="সার্ভিস বন্ধ করুন (Stop)"
+            android:textColor="#FFFFFF" />
 
-</LinearLayout>
+        <Button
+            android:id="@+id/btnExitApp"
+            android:layout_width="250dp"
+            android:layout_height="60dp"
+            android:backgroundTint="#F44336"
+            android:text="অ্যাপ থেকে বের হন (Exit)"
+            android:textColor="#FFFFFF" />
+
+        <TextView
+            android:id="@+id/tvStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="40dp"
+            android:text="অ্যাসিস্ট্যান্ট ব্যাকগ্রাউন্ডে চলছে..."
+            android:textColor="#757575"
+            android:textSize="16sp" />
+
+    </LinearLayout>
+
+</RelativeLayout>
