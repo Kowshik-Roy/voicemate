@@ -33,24 +33,16 @@ class MainActivity : AppCompatActivity() {
 
         val btnStop = findViewById<Button>(R.id.btnStopService)
         val btnExit = findViewById<Button>(R.id.btnExitApp)
-        val btnOverlay = findViewById<Button>(R.id.btnOpenAccessibility)
+        val btnAccessibility = findViewById<Button>(R.id.btnOpenAccessibility)
         val btnSettings = findViewById<ImageButton>(R.id.btnSettings)
 
         btnSettings.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
 
-        btnOverlay.text = "ওভারলে পারমিশন দিন"
-        btnOverlay.setOnClickListener {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                if (!Settings.canDrawOverlays(this)) {
-                    val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:$packageName".toUri())
-                    startActivity(intent)
-                    Toast.makeText(this, "তালিকায় Voice Mate খুঁজে 'Allow display over other apps' অন করুন", Toast.LENGTH_LONG).show()
-                } else {
-                    Toast.makeText(this, "ওভারলে পারমিশন অলরেডি দেওয়া আছে", Toast.LENGTH_SHORT).show()
-                }
-            }
+        // পারমিশন সেটআপ বাটন - এটি অ্যাক্সেসিবিলিটি এবং ওভারলে উভয় সেটিংস ওপেন করবে
+        btnAccessibility.setOnClickListener {
+            openPermissionSettings()
         }
 
         btnStop.setOnClickListener {
@@ -61,6 +53,27 @@ class MainActivity : AppCompatActivity() {
         btnExit.setOnClickListener {
             stopVoiceService()
             finishAffinity()
+        }
+    }
+
+    private fun openPermissionSettings() {
+        // ১. ওভারলে পারমিশন চেক ও ওপেন
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!Settings.canDrawOverlays(this)) {
+                val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:$packageName".toUri())
+                startActivity(intent)
+                Toast.makeText(this, "প্রথমে 'Display over other apps' অন করুন", Toast.LENGTH_SHORT).show()
+                return
+            }
+        }
+
+        // ২. অ্যাক্সেসিবিলিটি সেটিংস ওপেন (টাইপিং মোডের জন্য প্রয়োজন)
+        try {
+            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            startActivity(intent)
+            Toast.makeText(this, "Installed Services থেকে 'Voice Mate' অন করুন", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "অ্যাক্সেসিবিলিটি সেটিংস খুঁজে পাওয়া যায়নি", Toast.LENGTH_SHORT).show()
         }
     }
 
