@@ -3,6 +3,7 @@ package com.example.voicemate.helpers
 import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.Drawable
+import com.example.voicemate.service.VoiceAccessibilityService
 
 object AppHelper {
 
@@ -55,6 +56,13 @@ object AppHelper {
     }
 
     fun closeCurrentApp(context: Context): String {
+        // 1. Use Accessibility Service if available (More reliable)
+        VoiceAccessibilityService.instance?.let {
+            it.goHome()
+            return "অ্যাপটি বন্ধ করা হচ্ছে"
+        }
+
+        // 2. Fallback to Home Intent
         return try {
             val intent = Intent(Intent.ACTION_MAIN)
             intent.addCategory(Intent.CATEGORY_HOME)

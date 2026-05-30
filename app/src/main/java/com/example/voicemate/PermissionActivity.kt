@@ -40,6 +40,8 @@ class PermissionActivity : AppCompatActivity() {
 
         val btnMic = findViewById<LinearLayout>(R.id.btnMicPermission)
         val btnOverlay = findViewById<LinearLayout>(R.id.btnOverlayPermission)
+        val btnAccessibility = findViewById<LinearLayout>(R.id.btnAccessibilityPermission)
+        val btnAppPermissions = findViewById<LinearLayout>(R.id.btnAppPermissions)
         val btnGiveAll = findViewById<Button>(R.id.btnGiveAllPermissions)
         val tvNotNow = findViewById<TextView>(R.id.tvNotNow)
 
@@ -49,6 +51,20 @@ class PermissionActivity : AppCompatActivity() {
 
         btnOverlay.setOnClickListener {
             requestOverlayPermission()
+        }
+
+        btnAccessibility.setOnClickListener {
+            try {
+                // অ্যাক্সেসিবিলিটি সেটিংস ওপেন হবে
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                Toast.makeText(this, "Installed Services থেকে 'Voice Mate' অন করুন", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Toast.makeText(this, "সেটিংস খুঁজে পাওয়া যায়নি", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        btnAppPermissions.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
         }
 
         btnGiveAll.setOnClickListener {
@@ -108,6 +124,8 @@ class PermissionActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        checkAllPermissionsAndProceed()
+        if (areAllPermissionsGranted()) {
+            checkAllPermissionsAndProceed()
+        }
     }
 }

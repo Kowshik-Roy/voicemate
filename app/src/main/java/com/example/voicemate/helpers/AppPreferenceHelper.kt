@@ -15,7 +15,17 @@ object AppPreferenceHelper {
     }
 
     fun isAppAllowed(context: Context, packageName: String): Boolean {
-        // ডিফল্টভাবে ফেসবুক, ইউটিউব ইত্যাদি এলাউড রাখতে পারেন অথবা সব অফ রাখতে পারেন
-        return getPrefs(context).getBoolean(packageName, false)
+        // 1. If user has manually set a preference in Settings
+        if (getPrefs(context).contains(packageName)) {
+            return getPrefs(context).getBoolean(packageName, false)
+        }
+
+        // 2. Automatically allow common popular apps
+        val autoAllowedKeywords = listOf(
+            "telegram", "thunderdog", "challegram", "facebook", "whatsapp", "messenger", 
+            "youtube", "gmail", "chrome", "google.android.apps.maps", "android.settings", "plus.messenger"
+        )
+        
+        return autoAllowedKeywords.any { packageName.lowercase().contains(it) }
     }
 }

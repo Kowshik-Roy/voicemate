@@ -33,11 +33,12 @@
         android:textColor="#757575"
         android:textSize="16sp" />
 
+    <!-- মাইক্রোফোন পারমিশন -->
     <LinearLayout
         android:id="@+id/btnMicPermission"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="40dp"
+        android:layout_marginTop="20dp"
         android:background="@drawable/bg_permission_item"
         android:clickable="true"
         android:focusable="true"
@@ -70,24 +71,18 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="আপনার কথা শুনতে এবং ভয়েস কমান্ড বুঝতে প্রয়োজন।"
+                android:text="ভয়েস কমান্ড শোনার জন্য প্রয়োজন।"
                 android:textColor="#757575"
                 android:textSize="12sp" />
         </LinearLayout>
-
-        <ImageView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:layout_gravity="center_vertical"
-            android:src="@android:drawable/ic_media_next"
-            app:tint="#BDBDBD" />
     </LinearLayout>
 
+    <!-- ওভারলে পারমিশন -->
     <LinearLayout
         android:id="@+id/btnOverlayPermission"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="8dp"
         android:background="@drawable/bg_permission_item"
         android:clickable="true"
         android:focusable="true"
@@ -120,17 +115,98 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="অন্য অ্যাপের ওপর ভাসমানভাবে সহায়তা দেখানোর জন্য প্রয়োজন।"
+                android:text="অন্য অ্যাপের ওপর ভাসমান বাবল দেখানোর জন্য।"
                 android:textColor="#757575"
                 android:textSize="12sp" />
         </LinearLayout>
+    </LinearLayout>
+
+    <!-- অ্যাক্সেসিবিলিটি পারমিশন -->
+    <LinearLayout
+        android:id="@+id/btnAccessibilityPermission"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/bg_permission_item"
+        android:clickable="true"
+        android:focusable="true"
+        android:orientation="horizontal"
+        android:padding="16dp">
 
         <ImageView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:layout_gravity="center_vertical"
-            android:src="@android:drawable/ic_media_next"
-            app:tint="#BDBDBD" />
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/bg_icon_circle"
+            android:padding="8dp"
+            android:src="@android:drawable/ic_menu_preferences"
+            app:tint="#6200EE" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="অ্যাক্সেসিবিলিটি অনুমতি"
+                android:textColor="#1A1A1A"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="অ্যাপ বন্ধ করা এবং টাইপিং মোডের জন্য এটি অন করুন।"
+                android:textColor="#757575"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- অ্যাপ এক্সেস পারমিশন বাটন -->
+    <LinearLayout
+        android:id="@+id/btnAppPermissions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/bg_permission_item"
+        android:clickable="true"
+        android:focusable="true"
+        android:orientation="horizontal"
+        android:padding="16dp">
+
+        <ImageView
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/bg_icon_circle"
+            android:padding="8dp"
+            android:src="@android:drawable/ic_menu_manage"
+            app:tint="#6200EE" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="অ্যাপ ওপেন অনুমতি"
+                android:textColor="#1A1A1A"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="কোন কোন অ্যাপ ভয়েস দিয়ে খোলা যাবে তা সেট করুন।"
+                android:textColor="#757575"
+                android:textSize="12sp" />
+        </LinearLayout>
     </LinearLayout>
 
     <View
@@ -142,8 +218,9 @@
         android:id="@+id/btnGiveAllPermissions"
         android:layout_width="match_parent"
         android:layout_height="56dp"
+        android:layout_marginBottom="8dp"
         android:backgroundTint="#6200EE"
-        android:text="সব অনুমতি দিন"
+        android:text="হোম পেজে যান"
         android:textAllCaps="false"
         android:textColor="#FFFFFF"
         android:textSize="16sp"
@@ -153,32 +230,11 @@
         android:id="@+id/tvNotNow"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginBottom="16dp"
+        android:padding="8dp"
         android:text="এখন নয়"
         android:textColor="#6200EE"
         android:textSize="14sp"
         android:textStyle="bold" />
-
-    <LinearLayout
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
-
-        <ImageView
-            android:layout_width="14dp"
-            android:layout_height="14dp"
-            android:src="@android:drawable/ic_lock_idle_lock"
-            app:tint="#757575" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="4dp"
-            android:text="আপনার গোপনীয়তা আমাদের কাছে গুরুত্বপূর্ণ"
-            android:textColor="#757575"
-            android:textSize="12sp" />
-    </LinearLayout>
 
 </LinearLayout>

@@ -133,27 +133,80 @@ class BackgroundVoiceService : Service(), TextToSpeech.OnInitListener {
         for (spokenText in matches) {
             val spokenTextLower = spokenText.lowercase(Locale.getDefault())
             
+            // --- ১. টাইপিং মোড হ্যান্ডলার ---
             if (isTypingMode) {
+                // অ্যাপ বন্ধ করার কমান্ড (টাইপিং মোড থাকা অবস্থায়ও কাজ করবে - Highest Priority)
+                val closeCmds = listOf("বন্ধ", "close", "exit", "বাহির", "বের হও", "কেটে দাও", "bondho", "বন্ধ করো")
+                if (closeCmds.any { it in spokenTextLower }) {
+                    isTypingMode = false
+                    val response = CommandProcessor.processCommand(this, spokenText)
+                    speak(response, false) // হোম স্ক্রিনে যাওয়ার সময় আর শোনার দরকার নেই
+                    handled = true
+                    break
+                }
+
+                // টাইপিং মোড বন্ধ করার কমান্ড
                 if (spokenTextLower.contains("টাইপিং বন্ধ") || spokenTextLower.contains("stop typing")) {
                     isTypingMode = false
                     speak("টাইপিং মোড বন্ধ করা হয়েছে।", true)
-                } else {
-                    VoiceAccessibilityService.instance?.appendText(spokenText)
+                } 
+                // মেসেজ পাঠানোর একক কমান্ড
+                else if (spokenTextLower == "পাঠাও" || spokenTextLower == "মেসেজ পাঠাও" || spokenTextLower == "send") {
+                    VoiceAccessibilityService.instance?.clickSend()
+                    speak("মেসেজ পাঠানো হয়েছে", true)
+                }
+                // মুছে ফেলার কমান্ড
+                else if (spokenTextLower == "মুছে ফেলো" || spokenTextLower == "মুছে ফেল" || spokenTextLower == "delete") {
+                    VoiceAccessibilityService.instance?.deleteLastWord()
                     restartListening()
+                }
+                else if (spokenTextLower == "সব মুছে ফেলো" || spokenTextLower == "clear all") {
+                    VoiceAccessibilityService.instance?.clearAllText()
+                    restartListening()
+                }
+                // টেক্সট টাইপ করা
+                else {
+                    val isSuffixSend = spokenTextLower.endsWith("পাঠাও") || 
+                                     spokenTextLower.endsWith("send") || 
+                                     spokenTextLower.endsWith("পাঠান") || 
+                                     spokenTextLower.endsWith("সেন্ড")
+                    
+                    VoiceAccessibilityService.instance?.appendText(spokenText)
+                    
+                    if (isSuffixSend) {
+                        speak("মেসেজ পাঠানো হয়েছে", true)
+                    } else {
+                        restartListening()
+                    }
                 }
                 handled = true
                 break
             }
 
+            // --- ২. সার্চ মোড হ্যান্ডলার ---
+            if (isWaitingForSearch) {
+                val cancelKeywords = listOf("বাতিল", "বন্ধ", "না", "cancel", "close", "exit", "stop", "বের হও", "পিছনে", "বন্ধ করো")
+                if (cancelKeywords.any { it in spokenTextLower }) {
+                    isWaitingForSearch = false
+                    if (spokenTextLower.contains("বন্ধ") || spokenTextLower.contains("close") || 
+                        spokenTextLower.contains("exit") || spokenTextLower.contains("stop") || spokenTextLower.contains("বাহির")) {
+                        val response = CommandProcessor.processCommand(this, spokenText)
+                        speak(response, true)
+                    } else {
+                        speak("ঠিক আছে, সার্চ করা হচ্ছে না।", true)
+                    }
+                } else {
+                    handleSearchQuery(spokenText)
+                }
+                handled = true
+                break
+            }
+
+            // --- ৩. সাধারণ কমান্ড প্রসেসর ---
             val isCommand = CommandProcessor.isACommand(spokenTextLower)
             val isGreeting = CommandProcessor.isGreeting(spokenTextLower)
 
-            if (isWaitingForSearch && !isCommand && !isGreeting) {
-                handleSearchQuery(spokenText)
-                handled = true
-                break
-            } else if (isCommand || isGreeting) {
-                isWaitingForSearch = false
+            if (isCommand || isGreeting) {
                 val response = CommandProcessor.processCommand(this, spokenText)
                 
                 when {
