@@ -1,11 +1,17 @@
 package com.example.voicemate.service
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
+import android.graphics.Path
+import android.graphics.Rect
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
+import android.widget.Toast
 
 class VoiceAccessibilityService : AccessibilityService() {
     
@@ -25,150 +31,174 @@ class VoiceAccessibilityService : AccessibilityService() {
         performGlobalAction(GLOBAL_ACTION_HOME)
     }
 
-    fun goBack() {
-        performGlobalAction(GLOBAL_ACTION_BACK)
+    fun scrollDown() {
+        val path = Path()
+        val metrics = resources.displayMetrics
+        val middleX = metrics.widthPixels / 2f
+        val startY = metrics.heightPixels * 0.7f
+        val endY = metrics.heightPixels * 0.3f
+        path.moveTo(middleX, startY)
+        path.lineTo(middleX, endY)
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0, 400))
+            .build()
+        dispatchGesture(gesture, null, null)
+    }
+
+    fun scrollUp() {
+        val path = Path()
+        val metrics = resources.displayMetrics
+        val middleX = metrics.widthPixels / 2f
+        val startY = metrics.heightPixels * 0.3f
+        val endY = metrics.heightPixels * 0.7f
+        path.moveTo(middleX, startY)
+        path.lineTo(middleX, endY)
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0, 400))
+            .build()
+        dispatchGesture(gesture, null, null)
     }
 
     /**
-     * মেসেজ সেন্ড করার জন্য সেন্ড বাটন খুঁজে ক্লিক করে
+     * ইনপুট ফিল্ড খুঁজে বের করে এবং ক্লিক করে কীবোর্ড ওপেন করে
      */
-    fun clickSend() {
-        val rootNode = rootInActiveWindow ?: return
-        
-        // ১. হোয়াটসঅ্যাপের নির্দিষ্ট আইডি চেক
-        val whatsappSend = rootNode.findAccessibilityNodeInfosByViewId("com.whatsapp:id/send")
-        if (whatsappSend.isNotEmpty()) {
-            whatsappSend[0].performAction(AccessibilityNodeInfo.ACTION_CLICK)
+    fun focusAndOpenKeyboard() {
+        val targetNode = findInputNodeInAllWindows()
+        if (targetNode == null) {
+            Handler(Looper.getMainLooper()).post {
+                Toast.makeText(this, "লেখার জায়গা খুঁজে পাওয়া যাচ্ছে না", Toast.LENGTH_SHORT).show()
+            }
             return
         }
 
-        // ২. মেসেঞ্জার এবং অন্যান্য অ্যাপের জন্য স্ক্রিন সার্চ
-        searchAndClickSend(rootNode)
+        targetNode.let { node ->
+            node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            
+            // জেসচার ট্যাপের মাধ্যমে কীবোর্ড ট্রিগার করা
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                val rect = Rect()
+                node.getBoundsInScreen(rect)
+                val clickX = rect.centerX().toFloat()
+                val clickY = rect.centerY().toFloat()
+                
+                val path = Path()
+                path.moveTo(clickX, clickY)
+                val gesture = GestureDescription.Builder()
+                    .addStroke(GestureDescription.StrokeDescription(path, 0, 50))
+                    .build()
+                dispatchGesture(gesture, null, null)
+            }
+            
+            // ব্যাকআপ ক্লিক
+            Handler(Looper.getMainLooper()).postDelayed({
+                node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            }, 100)
+        }
     }
 
-    private fun searchAndClickSend(node: AccessibilityNodeInfo?): Boolean {
-        if (node == null) return false
-        
-        val text = node.text?.toString()?.lowercase() ?: ""
-        val contentDesc = node.contentDescription?.toString()?.lowercase() ?: ""
-        
-        if (node.isClickable && (
-            text == "send" || text == "পাঠান" || text == "পাঠাও" || text == "প্রেরণ" ||
-            contentDesc.contains("send") || contentDesc.contains("পাঠান")
-        )) {
-            node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            return true
+    /**
+     * সকল উইন্ডো থেকে ইনপুট ফিল্ড খুঁজে বের করে (মেসেঞ্জার/হোয়াটসঅ্যাপ স্পেশাল)
+     */
+    fun findInputNodeInAllWindows(): AccessibilityNodeInfo? {
+        val currentWindows = windows
+        if (currentWindows.isNotEmpty()) {
+            for (window in currentWindows) {
+                val root = window.root ?: continue
+                val target = findInputNodeRecursive(root)
+                if (target != null) return target
+            }
         }
+        rootInActiveWindow?.let { return findInputNodeRecursive(it) }
+        return null
+    }
+
+    private fun findInputNodeRecursive(rootNode: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        // ১. বর্তমানে ফোকাস থাকা ফিল্ড
+        val focused = rootNode.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        if (focused != null && focused.isEditable) return focused
+
+        // ২. মেসেঞ্জার, হোয়াটসঅ্যাপ এবং অন্যান্য অ্যাপের নির্দিষ্ট আইডি
+        val inputIds = listOf(
+            "com.whatsapp:id/entry",                 // WhatsApp
+            "com.facebook.orca:id/message_edit_text",// Messenger New
+            "com.facebook.orca:id/text_input_bar",   // Messenger Old
+            "com.facebook.orca:id/edit_text",        // Messenger Alt
+            "com.google.android.apps.messaging:id/compose_message_text", // Messages
+            "org.telegram.messenger:id/message_input" // Telegram
+        )
         
+        for (id in inputIds) {
+            val nodes = rootNode.findAccessibilityNodeInfosByViewId(id)
+            if (nodes.isNotEmpty() && nodes[0].isEditable) return nodes[0]
+        }
+
+        // ৩. জেনেরিক এডিটেবল ফিল্ড খোঁজা
+        return searchEditable(rootNode)
+    }
+
+    private fun searchEditable(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        if (node.isEditable && node.isEnabled) return node
         for (i in 0 until node.childCount) {
-            if (searchAndClickSend(node.getChild(i))) return true
+            val child = node.getChild(i) ?: continue
+            val res = searchEditable(child)
+            if (res != null) return res
         }
+        return null
+    }
+
+    /**
+     * টেক্সট অ্যাপেন্ড করা (টাইপিং)
+     */
+    fun appendText(text: String): Boolean {
+        val targetNode = findInputNodeInAllWindows() ?: return false
+        
+        val currentText = targetNode.text?.toString() ?: ""
+        val newText = if (currentText.isEmpty()) {
+            text.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+        } else {
+            val lastChar = currentText.last()
+            val space = if (lastChar != ' ' && !text.startsWith(" ")) " " else ""
+            "$currentText$space$text"
+        }
+        
+        val arguments = Bundle()
+        arguments.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, newText)
+        val success = targetNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+        
+        if (success) {
+            val selectionArgs = Bundle()
+            selectionArgs.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, newText.length)
+            selectionArgs.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, newText.length)
+            targetNode.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, selectionArgs)
+        }
+        
+        return success
+    }
+
+    fun clickSend(): Boolean {
+        val currentWindows = windows
+        for (window in currentWindows) {
+            val root = window.root ?: continue
+            if (trySend(root)) return true
+        }
+        rootInActiveWindow?.let { if (trySend(it)) return true }
         return false
     }
 
-    /**
-     * শেষ শব্দটি মুছে ফেলে
-     */
-    fun deleteLastWord() {
-        val rootNode = rootInActiveWindow ?: return
-        val focusedNode = rootNode.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return
-        val currentText = focusedNode.text?.toString() ?: ""
-        
-        if (currentText.isNotEmpty()) {
-            val words = currentText.trim().split(" ")
-            if (words.size > 1) {
-                val newText = words.dropLast(1).joinToString(" ")
-                updateInputText(focusedNode, newText)
-            } else {
-                updateInputText(focusedNode, "")
+    private fun trySend(root: AccessibilityNodeInfo): Boolean {
+        val sendIds = listOf(
+            "com.whatsapp:id/send", 
+            "com.facebook.orca:id/send_button", 
+            "com.google.android.apps.messaging:id/send_message_button_icon"
+        )
+        for (id in sendIds) {
+            val nodes = root.findAccessibilityNodeInfosByViewId(id)
+            if (nodes.isNotEmpty()) {
+                nodes[0].performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                return true
             }
         }
-    }
-
-    /**
-     * পুরো টেক্সট মুছে ফেলে
-     */
-    fun clearAllText() {
-        val rootNode = rootInActiveWindow ?: return
-        val focusedNode = rootNode.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return
-        updateInputText(focusedNode, "")
-    }
-
-    /**
-     * বর্তমান ফোকাসড ইনপুট ফিল্ডে ক্লিক করে কীবোর্ড ওপেন করার চেষ্টা করে
-     */
-    fun focusAndOpenKeyboard() {
-        val rootNode = rootInActiveWindow ?: return
-        val focusedNode = rootNode.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-        focusedNode?.let {
-            it.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
-            it.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-        }
-    }
-
-    /**
-     * ভয়েস থেকে প্রাপ্ত টেক্সট ইনপুট ফিল্ডে সুন্দরভাবে টাইপ করে
-     */
-    fun appendText(text: String) {
-        val rootNode = rootInActiveWindow ?: return
-        val focusedNode = rootNode.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return
-        
-        var input = text
-        var shouldSend = false
-        
-        // ১. বাক্যের শেষে "পাঠাও" বা "সেন্ড" থাকলে সেটি কমান্ড হিসেবে কাজ করবে
-        val sendSuffixes = listOf(" পাঠাও", " পাঠান", " সেন্ড", " send")
-        for (suffix in sendSuffixes) {
-            if (input.lowercase().endsWith(suffix)) {
-                input = input.substring(0, input.length - suffix.length)
-                shouldSend = true
-                break
-            }
-        }
-
-        // ২. উন্নত বাংলা পাঙ্কচুয়েশন এবং চিহ্ন সাপোর্ট
-        var formattedText = input
-            .replace("দাড়ি", "।").replace("দাঁড়ি", "।").replace("ফুলস্টপ", "।")
-            .replace("কমা", ",").replace("প্রশ্নবোধক", "?").replace("প্রশ্ন চিহ্ন", "?")
-            .replace("আশ্চর্যবোধক", "!").replace("বিস্ময়কর", "!").replace("কোলন", ":")
-            .replace("সেমিকোলন", ";").replace("হাইফেন", "-")
-            .replace("ব্র্যাকেট শুরু", "(").replace("ব্র্যাকেট শেষ", ")")
-            .replace("নতুন লাইন", "\n")
-
-        // কিছু কমন ইমোজি ও ফ্রেইজ সাপোর্ট
-        formattedText = formattedText
-            .replace("হাসি", "😊").replace("ভালোবাসা", "❤️").replace("দুঃখ", "😢")
-            .replace("ধন্যবাদ", "🙏").replace("লাইক", "👍").replace("সালাম", "আসসালামু আলাইকুম")
-            .trim()
-
-        if (formattedText.isNotEmpty()) {
-            val currentText = focusedNode.text?.toString() ?: ""
-            val newText = when {
-                currentText.isEmpty() -> formattedText
-                formattedText.startsWith("।") || formattedText.startsWith(",") || 
-                formattedText.startsWith("?") || formattedText.startsWith(":") || 
-                formattedText.startsWith(";") || formattedText.startsWith("\n") ->
-                    currentText + formattedText
-                else -> "$currentText $formattedText"
-            }
-            updateInputText(focusedNode, newText)
-        }
-        
-        if (shouldSend) {
-            Handler(Looper.getMainLooper()).postDelayed({ clickSend() }, 500)
-        }
-    }
-
-    private fun updateInputText(node: AccessibilityNodeInfo, text: String) {
-        val arguments = Bundle()
-        arguments.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
-        node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
-        
-        // কার্সার সবসময় শেষে রাখা
-        val selectionArgs = Bundle()
-        selectionArgs.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, text.length)
-        selectionArgs.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, text.length)
-        node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, selectionArgs)
+        return false
     }
 
     override fun onDestroy() {

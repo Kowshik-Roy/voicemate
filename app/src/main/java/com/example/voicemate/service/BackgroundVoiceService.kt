@@ -42,9 +42,19 @@ class BackgroundVoiceService : Service(), TextToSpeech.OnInitListener {
     private var isTypingMode = false
     private var isListening = false
     private var isSpeaking = false
+    
+    // রিকগনাইজার আটকে গেলে তা উদ্ধারের জন্য ওয়াচডগ
+    private val watchdogRunnable = Runnable {
+        if (!isSpeaking && !isListening) {
+            Log.d("VoiceMate", "Watchdog triggered: Restarting listening...")
+            restartListening()
+        }
+    }
 
     companion object {
         var instance: BackgroundVoiceService? = null
+        const val ACTION_LISTENING_STATE = "com.example.voicemate.LISTENING_STATE"
+        const val EXTRA_IS_LISTENING = "is_listening"
     }
 
     override fun onCreate() {
@@ -61,16 +71,19 @@ class BackgroundVoiceService : Service(), TextToSpeech.OnInitListener {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-            } else {
-                0
-            }
+            } else { 0 }
             startForeground(1, notification, type)
         } else {
             startForeground(1, notification)
         }
-        
         startListening()
         return START_STICKY
+    }
+
+    private fun sendListeningState(listening: Boolean) {
+        val intent = Intent(ACTION_LISTENING_STATE)
+        intent.putExtra(EXTRA_IS_LISTENING, listening)
+        sendBroadcast(intent)
     }
 
     private fun initSpeechRecognizer() {
@@ -81,8 +94,9 @@ class BackgroundVoiceService : Service(), TextToSpeech.OnInitListener {
                 speechRecognizer?.setRecognitionListener(object : RecognitionListener {
                     override fun onReadyForSpeech(params: Bundle?) {
                         isListening = true
-                        updateNotification("আমি আপনার কথা শুনছি...")
-                        Toast.makeText(applicationContext, "🔴 আমি শুনছি... বলুন", Toast.LENGTH_SHORT).show()
+                        sendListeningState(true)
+                        updateNotification(if (isTypingMode) "আমি লিখছি... বলুন" else "আমি শুনছি...")
+                        mainHandler.removeCallbacks(watchdogRunnable)
                     }
 
                     override fun onBeginningOfSpeech() {}
@@ -90,18 +104,35 @@ class BackgroundVoiceService : Service(), TextToSpeech.OnInitListener {
                     override fun onBufferReceived(buffer: ByteArray?) {}
                     override fun onEndOfSpeech() {
                         isListening = false
-                        updateNotification("প্রসেসিং হচ্ছে...")
+                        sendListeningState(false)
                     }
 
                     override fun onError(error: Int) {
                         isListening = false
+                        sendListeningState(false)
+                        Log.e("VoiceMate", "Speech Error: $error")
+                        
                         if (!isSpeaking) {
-                            mainHandler.postDelayed({ startListening() }, 1000)
+                            val delay = when (error) {
+                                SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> 1000L
+                                SpeechRecognizer.ERROR_NO_MATCH -> 300L
+                                else -> 1000L
+                            }
+                            // Busy এরর হলে রিকগনাইজার রি-ইনিশিয়ালাইজ করা জরুরি
+                            if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
+                                mainHandler.postDelayed({ 
+                                    initSpeechRecognizer()
+                                    startListening() 
+                                }, delay)
+                            } else {
+                                mainHandler.postDelayed({ startListening() }, delay)
+                            }
                         }
                     }
 
                     override fun onResults(results: Bundle?) {
                         isListening = false
+                        sendListeningState(false)
                         val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION) ?: arrayListOf()
                         if (matches.isNotEmpty()) {
                             processResults(matches)
@@ -113,149 +144,104 @@ class BackgroundVoiceService : Service(), TextToSpeech.OnInitListener {
                     override fun onPartialResults(partialResults: Bundle?) {}
                     override fun onEvent(eventType: Int, params: Bundle?) {}
                 })
-            } catch (_: Exception) {
-                Log.e("VoiceMate", "Initialization failed")
+            } catch (e: Exception) {
+                Log.e("VoiceMate", "SR Init Error: ${e.message}")
             }
         }
 
         recognizerIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "bn-BD")
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "bn-BD")
+            putExtra(RecognizerIntent.EXTRA_SUPPORTED_LANGUAGES, arrayListOf("bn-BD", "en-US"))
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
         }
     }
 
     private fun processResults(matches: ArrayList<String>) {
         var handled = false
-        val firstResult = matches[0]
-
+        
         for (spokenText in matches) {
             val spokenTextLower = spokenText.lowercase(Locale.getDefault())
-            
-            // --- ১. টাইপিং মোড হ্যান্ডলার ---
+
             if (isTypingMode) {
-                // অ্যাপ বন্ধ করার কমান্ড (টাইপিং মোড থাকা অবস্থায়ও কাজ করবে - Highest Priority)
-                val closeCmds = listOf("বন্ধ", "close", "exit", "বাহির", "বের হও", "কেটে দাও", "bondho", "বন্ধ করো")
-                if (closeCmds.any { it in spokenTextLower }) {
+                if (listOf("বন্ধ", "কাটো", "exit", "stop typing").any { spokenTextLower.contains(it) }) {
                     isTypingMode = false
-                    val response = CommandProcessor.processCommand(this, spokenText)
-                    speak(response, false) // হোম স্ক্রিনে যাওয়ার সময় আর শোনার দরকার নেই
+                    speak("টাইপিং মোড বন্ধ করা হয়েছে।", true)
                     handled = true
                     break
                 }
-
-                // টাইপিং মোড বন্ধ করার কমান্ড
-                if (spokenTextLower.contains("টাইপিং বন্ধ") || spokenTextLower.contains("stop typing")) {
-                    isTypingMode = false
-                    speak("টাইপিং মোড বন্ধ করা হয়েছে।", true)
-                } 
-                // মেসেজ পাঠানোর একক কমান্ড
-                else if (spokenTextLower == "পাঠাও" || spokenTextLower == "মেসেজ পাঠাও" || spokenTextLower == "send") {
-                    VoiceAccessibilityService.instance?.clickSend()
-                    speak("মেসেজ পাঠানো হয়েছে", true)
-                }
-                // মুছে ফেলার কমান্ড
-                else if (spokenTextLower == "মুছে ফেলো" || spokenTextLower == "মুছে ফেল" || spokenTextLower == "delete") {
-                    VoiceAccessibilityService.instance?.deleteLastWord()
-                    restartListening()
-                }
-                else if (spokenTextLower == "সব মুছে ফেলো" || spokenTextLower == "clear all") {
-                    VoiceAccessibilityService.instance?.clearAllText()
-                    restartListening()
-                }
-                // টেক্সট টাইপ করা
-                else {
-                    val isSuffixSend = spokenTextLower.endsWith("পাঠাও") || 
-                                     spokenTextLower.endsWith("send") || 
-                                     spokenTextLower.endsWith("পাঠান") || 
-                                     spokenTextLower.endsWith("সেন্ড")
-                    
-                    VoiceAccessibilityService.instance?.appendText(spokenText)
-                    
-                    if (isSuffixSend) {
+                
+                val service = VoiceAccessibilityService.instance
+                if (service != null) {
+                    if (spokenTextLower == "পাঠাও" || spokenTextLower == "send") {
+                        service.clickSend()
                         speak("মেসেজ পাঠানো হয়েছে", true)
                     } else {
-                        restartListening()
+                        val success = service.appendText(spokenText)
+                        if (spokenTextLower.endsWith(" পাঠাও") || spokenTextLower.endsWith(" send")) {
+                            service.clickSend()
+                            speak("পাঠানো হয়েছে", true)
+                        } else {
+                            // টাইপিং মোডে দ্রুত পরবর্তী কথা শোনার জন্য
+                            mainHandler.postDelayed({ restartListening() }, 400)
+                        }
                     }
+                    handled = true
+                    break
                 }
-                handled = true
-                break
             }
 
-            // --- ২. সার্চ মোড হ্যান্ডলার ---
             if (isWaitingForSearch) {
-                val cancelKeywords = listOf("বাতিল", "বন্ধ", "না", "cancel", "close", "exit", "stop", "বের হও", "পিছনে", "বন্ধ করো")
-                if (cancelKeywords.any { it in spokenTextLower }) {
-                    isWaitingForSearch = false
-                    if (spokenTextLower.contains("বন্ধ") || spokenTextLower.contains("close") || 
-                        spokenTextLower.contains("exit") || spokenTextLower.contains("stop") || spokenTextLower.contains("বাহির")) {
-                        val response = CommandProcessor.processCommand(this, spokenText)
-                        speak(response, true)
-                    } else {
-                        speak("ঠিক আছে, সার্চ করা হচ্ছে না।", true)
-                    }
-                } else {
-                    handleSearchQuery(spokenText)
-                }
+                handleSearchQuery(spokenText)
                 handled = true
                 break
             }
 
-            // --- ৩. সাধারণ কমান্ড প্রসেসর ---
-            val isCommand = CommandProcessor.isACommand(spokenTextLower)
-            val isGreeting = CommandProcessor.isGreeting(spokenTextLower)
+            val isCommand = CommandProcessor.isACommand(spokenText)
+            val isGreeting = CommandProcessor.isGreeting(spokenText)
 
             if (isCommand || isGreeting) {
                 val response = CommandProcessor.processCommand(this, spokenText)
-                
                 when {
-                    response.contains("কি সার্চ করতে হবে?") -> {
+                    response == "ACTION_START_TYPING" -> {
+                        if (VoiceAccessibilityService.instance == null) {
+                            speak("টাইপিং শুরু করতে অ্যাক্সেসিবিলিটি সার্ভিস অন করুন।", false)
+                        } else {
+                            isTypingMode = true
+                            VoiceAccessibilityService.instance?.focusAndOpenKeyboard()
+                            speak("টাইপিং মোড চালু হয়েছে। কি লিখবো বলুন?", true)
+                        }
+                    }
+                    response.startsWith("PROMPT_SEARCH|") -> {
+                        val parts = response.split("|")
+                        searchTarget = parts[1]
                         isWaitingForSearch = true
-                        searchTarget = if ("youtube" in spokenTextLower || "ইউটিউব" in spokenTextLower) "youtube" else "chrome"
-                        speak(response, true) 
+                        speak(parts[2], true)
                     }
-                    response.contains("টাইপিং মোড চালু") -> {
-                        isTypingMode = true
-                        VoiceAccessibilityService.instance?.focusAndOpenKeyboard()
+                    response != "UNKNOWN_COMMAND" -> {
                         speak(response, true)
                     }
-                    else -> {
-                        speak(response, true)
-                    }
+                    else -> continue
                 }
                 handled = true
                 break
             }
         }
-        
-        if (!handled) {
-            val fallbackResponse = CommandProcessor.processCommand(this, firstResult)
-            if (!fallbackResponse.contains("বুঝতে পারছি না")) {
-                speak(fallbackResponse, true)
-            } else {
-                restartListening()
-            }
-        }
+
+        if (!handled) restartListening()
     }
 
     private fun handleSearchQuery(query: String) {
         isWaitingForSearch = false
         val encodedQuery = Uri.encode(query)
-        val url = if (searchTarget == "youtube") {
-            "https://www.youtube.com/results?search_query=$encodedQuery"
-        } else {
-            "https://www.google.com/search?q=$encodedQuery"
-        }
-        
+        val url = if (searchTarget == "youtube") "https://www.youtube.com/results?search_query=$encodedQuery"
+                  else "https://www.google.com/search?q=$encodedQuery"
         try {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(intent)
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             speak("আমি $query সার্চ করছি।", true)
-        } catch (_: Exception) {
-            speak("দুঃখিত, সার্চ করা সম্ভব হয়নি।", true)
-        }
+        } catch (_: Exception) { speak("সার্চ করা যায়নি।", true) }
         searchTarget = ""
     }
 
@@ -264,20 +250,26 @@ class BackgroundVoiceService : Service(), TextToSpeech.OnInitListener {
         mainHandler.post {
             try {
                 speechRecognizer?.startListening(recognizerIntent)
-            } catch (_: Exception) {
+                // ৫ সেকেন্ডের মধ্যে কথা না শুনলে রিস্টার্ট করার ব্যবস্থা
+                mainHandler.postDelayed(watchdogRunnable, 6000)
+            } catch (e: Exception) {
                 restartListening()
             }
         }
     }
 
     private fun restartListening() {
+        mainHandler.removeCallbacks(watchdogRunnable)
         if (isSpeaking) return
+        
         mainHandler.post {
             try {
                 speechRecognizer?.cancel()
                 isListening = false
-                startListening()
-            } catch (_: Exception) {
+                // পুরোপুরি নতুনভাবে রিকগনাইজার চালু করা যাতে Busy এরর না আসে
+                initSpeechRecognizer()
+                mainHandler.postDelayed({ startListening() }, 400)
+            } catch (e: Exception) {
                 initSpeechRecognizer()
                 startListening()
             }
@@ -285,34 +277,35 @@ class BackgroundVoiceService : Service(), TextToSpeech.OnInitListener {
     }
 
     fun speak(text: String, startListeningAfter: Boolean = true) {
-        val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (maxVolume * 0.8).toInt(), 0)
+        val params = Bundle()
+        params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "VOICE_REPLY")
         
         tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {
                 isSpeaking = true
                 mainHandler.post { 
-                    speechRecognizer?.cancel() 
+                    speechRecognizer?.cancel()
                     isListening = false
-                    updateNotification("অ্যাসিস্ট্যান্ট কথা বলছে...")
+                    sendListeningState(false)
                 }
             }
             override fun onDone(utteranceId: String?) {
                 isSpeaking = false
                 if (startListeningAfter) {
-                    mainHandler.postDelayed({ startListening() }, 600)
+                    // কথা শেষ হওয়ার পর একটি বিরতি দিয়ে রিকগনাইজার রিস্টার্ট
+                    mainHandler.postDelayed({ restartListening() }, 700)
                 }
             }
-
-            @Deprecated("Deprecated in Java")
             override fun onError(utteranceId: String?) {
+                isSpeaking = false
+                if (startListeningAfter) restartListening()
+            }
+            override fun onStop(utteranceId: String?, interrupted: Boolean) {
                 isSpeaking = false
                 if (startListeningAfter) restartListening()
             }
         })
 
-        val params = Bundle()
-        params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "VOICE_REPLY")
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "VOICE_REPLY")
     }
 
@@ -323,22 +316,17 @@ class BackgroundVoiceService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun updateNotification(status: String) {
-        val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.notify(1, createNotification(status))
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(1, createNotification(status))
     }
 
     private fun createNotification(contentText: String): Notification {
-        val openAppIntent = Intent(this, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, openAppIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
+        val intent = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, "voice_service_channel")
             .setContentTitle("ভয়েস মেট")
             .setContentText(contentText)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentIntent(pendingIntent)
+            .setContentIntent(intent)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .build()
@@ -346,12 +334,8 @@ class BackgroundVoiceService : Service(), TextToSpeech.OnInitListener {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                "voice_service_channel", "Voice Mate Service",
-                NotificationManager.IMPORTANCE_LOW
-            )
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
+            val channel = NotificationChannel("voice_service_channel", "Voice Mate", NotificationManager.IMPORTANCE_LOW)
+            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
     }
 

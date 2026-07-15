@@ -2,7 +2,10 @@ package com.example.voicemate.helpers
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.ResolveInfo
 import android.graphics.drawable.Drawable
+import android.os.Build
 import com.example.voicemate.service.VoiceAccessibilityService
 
 object AppHelper {
@@ -10,27 +13,44 @@ object AppHelper {
     data class AppInfo(
         val name: String,
         val packageName: String,
-        val icon: Drawable
+        val icon: Drawable? = null
     )
 
+    /**
+     * ইনস্টল করা লঞ্চার অ্যাপগুলো খুঁজে বের করে। এটি QUERY_ALL_PACKAGES ছাড়াই আধুনিক নিয়মে কাজ করে।
+     */
     fun getAllInstalledApps(context: Context): List<AppInfo> {
         val apps = mutableListOf<AppInfo>()
         val pm = context.packageManager
-        val packages = pm.getInstalledPackages(0)
-        for (packageInfo in packages) {
-            val launchIntent = pm.getLaunchIntentForPackage(packageInfo.packageName)
-            if (launchIntent != null) {
-                val name = packageInfo.applicationInfo.loadLabel(pm).toString()
-                val icon = packageInfo.applicationInfo.loadIcon(pm)
-                apps.add(AppInfo(name, packageInfo.packageName, icon))
+        
+        val mainIntent = Intent(Intent.ACTION_MAIN, null)
+        mainIntent.addCategory(Intent.CATEGORY_LAUNCHER)
+        
+        val resolvedInfos: List<ResolveInfo> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.queryIntentActivities(mainIntent, PackageManager.ResolveInfoFlags.of(0L))
+        } else {
+            pm.queryIntentActivities(mainIntent, 0)
+        }
+
+        for (info in resolvedInfos) {
+            try {
+                val name = info.loadLabel(pm).toString()
+                val packageName = info.activityInfo.packageName
+                // লিস্টিংয়ের সময় আইকন লোড করলে মেমোরি বেশি খরচ হয়, তাই প্রয়োজন হলে লোড করা ভালো।
+                apps.add(AppInfo(name, packageName, null))
+            } catch (e: Exception) {
+                // কোনো অ্যাপের তথ্য পাওয়া না গেলে সেটি স্কিপ করবে।
             }
         }
-        return apps.sortedBy { it.name }
+        return apps.distinctBy { it.packageName }.sortedBy { it.name }
     }
 
+    /**
+     * ভয়েস কমান্ড অনুযায়ী অ্যাপ ওপেন করে।
+     */
     fun openApp(context: Context, packageNames: List<String>): String {
         for (packageName in packageNames) {
-            // Check if the app is allowed by the user in settings
+            // চেক করা হচ্ছে সেটিংস থেকে কোনো অ্যাপ ব্লক করা কি না
             if (!AppPreferenceHelper.isAppAllowed(context, packageName)) {
                 continue
             }
@@ -45,32 +65,26 @@ object AppHelper {
             } catch (_: Exception) {
             }
         }
-        
-        // If we tried multiple packages and none were allowed or found
-        val isAnyAppBlocked = packageNames.any { !AppPreferenceHelper.isAppAllowed(context, it) }
-        return if (isAnyAppBlocked) {
-            "অ্যাপটি ওপেন করার অনুমতি নেই। সেটিংস থেকে পারমিশন দিন।"
-        } else {
-            "দুঃখিত, আপনার ফোনে এই অ্যাপটি পাওয়া যায়নি"
-        }
+        return "দুঃখিত, আপনার ফোনে এই অ্যাপটি খুঁজে পাওয়া যায়নি"
     }
 
+    /**
+     * হোম স্ক্রিনে ফিরে যায়।
+     */
     fun closeCurrentApp(context: Context): String {
-        // 1. Use Accessibility Service if available (More reliable)
         VoiceAccessibilityService.instance?.let {
             it.goHome()
-            return "অ্যাপটি বন্ধ করা হচ্ছে"
+            return "হোম স্ক্রিনে যাওয়া হচ্ছে"
         }
-
-        // 2. Fallback to Home Intent
         return try {
-            val intent = Intent(Intent.ACTION_MAIN)
-            intent.addCategory(Intent.CATEGORY_HOME)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val intent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
             context.startActivity(intent)
-            "অ্যাপটি বন্ধ করা হচ্ছে"
+            "হোম স্ক্রিনে যাওয়া হচ্ছে"
         } catch (_: Exception) {
-            "দুঃখিত, এটি বন্ধ করা সম্ভব হচ্ছে না"
+            "দুঃখিত, এটি করা সম্ভব হচ্ছে না"
         }
     }
 }

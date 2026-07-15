@@ -1,6 +1,7 @@
 package com.example.voicemate.camera
 
 import android.content.ContentValues
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
@@ -14,6 +15,8 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import com.example.voicemate.databinding.ActivityCameraBinding
+import com.example.voicemate.helpers.MLKitHelper
+import com.example.voicemate.service.BackgroundVoiceService
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.ExecutorService
@@ -40,6 +43,9 @@ class CameraActivity : AppCompatActivity() {
 
         viewBinding.imageCaptureButton.setOnClickListener { takePhoto() }
         cameraExecutor = Executors.newSingleThreadExecutor()
+        
+        // দৃষ্টিহীনদের সুবিধার জন্য স্ক্রিন খুললেই একটি নির্দেশনা প্রদান
+        BackgroundVoiceService.instance?.speak("ক্যামেরা ওপেন হয়েছে। ছবি তুলতে স্ক্রিনের নিচের মাঝখানে ক্লিক করুন।", false)
     }
 
     private fun startCamera() {
@@ -87,22 +93,47 @@ class CameraActivity : AppCompatActivity() {
             .Builder(contentResolver, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
             .build()
 
+        BackgroundVoiceService.instance?.speak("ছবি তোলা হচ্ছে, দয়া করে স্থির থাকুন।", false)
+
         imageCapture.takePicture(
             outputOptions,
             ContextCompat.getMainExecutor(this),
             object : ImageCapture.OnImageSavedCallback {
                 override fun onError(exc: ImageCaptureException) {
                     Log.e(TAG, "Photo capture failed: ${exc.message}", exc)
-                    Toast.makeText(baseContext, "ছবি তোলা ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
+                    BackgroundVoiceService.instance?.speak("দুঃখিত, ছবি তোলা সম্ভব হয়নি।")
                 }
 
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                    val msg = "ছবি তোলা হয়েছে এবং গ্যালারিতে সেভ করা হয়েছে"
-                    Toast.makeText(baseContext, msg, Toast.LENGTH_SHORT).show()
-                    Log.d(TAG, msg)
+                    val savedUri = output.savedUri ?: return
+                    processImage(savedUri)
                 }
             }
         )
+    }
+
+    private fun processImage(uri: Uri) {
+        BackgroundVoiceService.instance?.speak("ছবি প্রসেসিং করা হচ্ছে।", false)
+        
+        // প্রথমে টেক্সট শনাক্ত করার চেষ্টা করি
+        MLKitHelper.recognizeText(this, uri, { text ->
+            if (text.contains("খুঁজে পাওয়া যায়নি")) {
+                // যদি টেক্সট না পাওয়া যায়, তবে অবজেক্ট ডিটেকশন করি
+                detectObjects(uri)
+            } else {
+                BackgroundVoiceService.instance?.speak("ছবিতে লেখা আছে: $text")
+            }
+        }, {
+            detectObjects(uri)
+        })
+    }
+
+    private fun detectObjects(uri: Uri) {
+        MLKitHelper.detectObjects(this, uri, { result ->
+            BackgroundVoiceService.instance?.speak(result)
+        }, {
+            BackgroundVoiceService.instance?.speak("দুঃখিত, ছবিতে কি আছে তা আমি বুঝতে পারছি না।")
+        })
     }
 
     override fun onDestroy() {

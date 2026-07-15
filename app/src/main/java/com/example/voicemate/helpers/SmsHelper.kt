@@ -10,7 +10,7 @@ object SmsHelper {
     }
 
     fun canSendSms(context: Context): Boolean {
-        // Always return true or false as per requirement, usually true to avoid permission blocks if just disabling logic
+
         return true
     }
 }

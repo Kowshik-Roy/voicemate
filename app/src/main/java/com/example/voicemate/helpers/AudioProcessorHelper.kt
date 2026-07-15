@@ -27,7 +27,7 @@ object AudioProcessorHelper {
                 AudioFormat.ENCODING_PCM_16BIT
             )
 
-            // VOICE_RECOGNITION সোর্স ব্যবহার করা হয়েছে যা স্বয়ংক্রিয়ভাবে ভয়েস ক্ল্যারিটি বাড়ায়
+
             audioRecord = AudioRecord(
                 MediaRecorder.AudioSource.VOICE_RECOGNITION,
                 sampleRate,
@@ -38,13 +38,13 @@ object AudioProcessorHelper {
 
             val sessionId = audioRecord?.audioSessionId ?: return
 
-            // নয়েজ সাপ্রেসর চালু করা (যদি ডিভাইসে থাকে)
+
             if (NoiseSuppressor.isAvailable()) {
                 noiseSuppressor = NoiseSuppressor.create(sessionId)
                 noiseSuppressor?.enabled = true
             }
 
-            // কথা কম সাউন্ডে হলে অটোমেটিক সাউন্ড বাড়িয়ে দিবে
+
             if (AutomaticGainControl.isAvailable()) {
                 agc = AutomaticGainControl.create(sessionId)
                 agc?.enabled = true

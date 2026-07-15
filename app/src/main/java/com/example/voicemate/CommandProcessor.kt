@@ -1,194 +1,188 @@
 package com.example.voicemate
 
+import android.app.SearchManager
 import android.content.Context
 import android.content.Intent
-import android.media.AudioManager
-import com.example.voicemate.camera.CameraActivity
+import android.net.Uri
 import com.example.voicemate.helpers.AppHelper
-import com.example.voicemate.helpers.AppPreferenceHelper
+import com.example.voicemate.helpers.ContactHelper
 import com.example.voicemate.helpers.DateHelper
-import com.example.voicemate.helpers.SearchHelper
 import com.example.voicemate.service.VoiceAccessibilityService
 
+@Suppress("SpellCheckingInspection")
 object CommandProcessor {
 
+    private val appNameMapping = mapOf(
+        "গুগল" to "google", "ইউটিউব" to "youtube", "ফেসবুক" to "facebook",
+        "ম্যাপ" to "maps", "প্লে স্টোর" to "play store", "গ্যালারি" to "gallery",
+        "ক্যামেরা" to "camera", "সেটিংস" to "settings", "ফোন" to "phone",
+        "মেসেজ" to "message", "হোয়াটসঅ্যাপ" to "whatsapp", "ম্যাসেঞ্জার" to "messenger"
+    )
+
+    private fun String.containsWord(word: String): Boolean {
+        val pattern = "(^|[^a-zA-Z0-9\\u0980-\\u09FF])${Regex.escape(word)}($|[^a-zA-Z0-9\\u0980-\\u09FF])"
+        return Regex(pattern, RegexOption.IGNORE_CASE).containsMatchIn(this)
+    }
+
+    private fun convertBengaliDigits(input: String): String {
+        val bengaliDigits = charArrayOf('০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯')
+        val englishDigits = charArrayOf('0', '1', '2', '3', '4', '5', '6', '7', '8', '9')
+        var result = input
+        for (i in 0..9) {
+            result = result.replace(bengaliDigits[i], englishDigits[i])
+        }
+        return result
+    }
+
+    private fun makeCall(context: Context, number: String, name: String): String {
+        return try {
+            val intent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$number"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            if (name == number) "$number নাম্বারে কল করা হচ্ছে" else "$name কে কল করা হচ্ছে"
+        } catch (e: Exception) {
+            val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$number"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(dialIntent)
+            if (name == number) "$number নাম্বারটি ডায়াল প্যাডে দেওয়া হয়েছে" else "$name এর নাম্বার ডায়াল প্যাডে দেওয়া হয়েছে"
+        }
+    }
+
     fun processCommand(context: Context, command: String): String {
-        // পাঙ্কচুয়েশন সরিয়ে এবং অতিরিক্ত স্পেস ট্রিম করে কমান্ডটি ক্লিন করা
-        val cmd = command.lowercase().replace(Regex("[^a-zA-Z0-9\\u0980-\\u09FF\\s]"), " ").trim()
-        val words = cmd.split(Regex("\\s+"))
-
-        // --- 1. Close/Exit Handler (Highest Priority) ---
-        val closeKeywords = listOf("বন্ধ", "বন্ধ করো", "বন্ধ কর", "কাটো", "close", "exit", "stop", "বাহির", "বের হও", "ব্যাক", "পিছনে", "quit", "কেটে দাও", "কেটে", "বের", "bondho", "exit app")
-        if (closeKeywords.any { it in cmd }) {
-            // যদি ক্যামেরা খোলা থাকে
-            CameraActivity.instance?.let {
-                it.finish()
-                return "ক্যামেরা বন্ধ করা হচ্ছে"
-            }
-            // হোম স্ক্রিনে ফিরে আসার জন্য (Accessibility Service প্রয়োজন)
-            return AppHelper.closeCurrentApp(context)
+        val cmd = convertBengaliDigits(command.lowercase().trim())
+        
+        // ১. টাইপিং মোড
+        if (listOf("টাইপিং", "টাইপ", "লিখুন", "typing").any { cmd.containsWord(it) } && !cmd.contains("বন্ধ")) {
+            return "ACTION_START_TYPING"
         }
 
-        // --- 2. Telegram Open Handler (Special Case) ---
-        if (cmd.contains("telegram") || cmd.contains("টেলিগ্রাম") || cmd.contains("টেলীগ্রাম") || cmd.contains("টেলি গ্রাম") || cmd.contains("টেলি")) {
-            if (cmd.contains("ওপেন") || cmd.contains("খুলো") || cmd.contains("খোলো") || cmd.contains("চালু") || cmd.contains("open") || words.size <= 2) {
-                val installedApps = AppHelper.getAllInstalledApps(context)
-                val telegramApp = installedApps.find { 
-                    it.packageName.contains("telegram") || 
-                    it.packageName.contains("thunderdog") || 
-                    it.packageName.contains("plus.messenger") ||
-                    it.packageName.contains("challegram") ||
-                    it.name.lowercase().contains("telegram") 
+        // ২. সার্চ কমান্ড (গুগল ও ইউটিউব)
+        val searchKeywords = listOf("search", "সার্চ", "খুঁজো", "খুঁজুন", "দেখাও", "দেখবো", "খুঁজে দাও")
+        val ytKeywords = listOf("youtube", "ইউটিউব")
+        val ggKeywords = listOf("google", "গুগল")
+        val openKeywords = listOf("open", "খুলো", "খোলো", "ওপেন", "চালু")
+        
+        val containsYt = ytKeywords.any { cmd.contains(it) }
+        val containsGg = ggKeywords.any { cmd.contains(it) }
+        val containsSearch = searchKeywords.any { cmd.contains(it) }
+
+        if (containsYt || containsGg || containsSearch) {
+            var targetApp = if (containsYt) "youtube" else if (containsGg) "google" else ""
+            
+            val noiseWords = listOf("এ", "তে", "করে", "দিয়ে", "দাও", "করো", "নিয়ে", "ইন", "in", "open", "koro", "search", "খুলো", "ওপেন", "চালু", "করুন", "লাগাও", "please", "app", "অ্যাপ", "কে", "রে")
+            val toRemove = (searchKeywords + ytKeywords + ggKeywords + openKeywords + noiseWords).distinct().sortedByDescending { it.length }
+            
+            var query = cmd
+            for (word in toRemove) {
+                val pattern = "(^|[^a-zA-Z0-9\\u0980-\\u09FF])${Regex.escape(word)}($|[^a-zA-Z0-9\\u0980-\\u09FF])"
+                query = query.replace(Regex(pattern, RegexOption.IGNORE_CASE), " ")
+            }
+            query = query.trim().replace(Regex("\\s+"), " ")
+
+            if (query.isNotEmpty()) {
+                if (targetApp.isEmpty()) targetApp = "google"
+                val encodedQuery = Uri.encode(query)
+                val url = if (targetApp == "youtube") "https://www.youtube.com/results?search_query=$encodedQuery"
+                          else "https://www.google.com/search?q=$encodedQuery"
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                    return "${if(targetApp == "youtube") "ইউটিউবে" else "গুগলে"} $query সার্চ করা হচ্ছে"
+                } catch (e: Exception) {
+                    return "সার্চ করা সম্ভব হয়নি"
                 }
-                telegramApp?.let {
-                    return AppHelper.openApp(context, listOf(it.packageName))
+            } 
+            else if (targetApp.isNotEmpty()) {
+                return if (targetApp == "youtube") "PROMPT_SEARCH|youtube|ইউটিউবে কি দেখতে চান?"
+                       else "PROMPT_SEARCH|google|গুগলে কি সার্চ করবো?"
+            }
+        }
+
+        // ৩. কল কমান্ড (কী-ওয়ার্ডসহ)
+        if (cmd.contains("call") || cmd.contains("কল") || cmd.contains("ফোন")) {
+            var input = cmd
+            val callKeywords = listOf("call", "কল", "ফোন", "করো", "করুন", "দাও", "লাগাও", "নাম্বারে", "নম্বরে")
+            callKeywords.forEach { input = input.replace(it, "") }
+            val nameOrNumber = input.trim().replace(Regex("[কে|রে]$"), "").trim()
+
+            if (nameOrNumber.isNotEmpty()) {
+                val digits = nameOrNumber.replace(Regex("[^0-9]"), "")
+                if (digits.length == 11) return makeCall(context, digits, digits)
+                if (digits.length >= 3 && digits.length < 11) {
+                    val result = ContactHelper.getPhoneNumberByLastDigits(context, digits)
+                    if (result != null) return makeCall(context, result.second, result.first)
                 }
+                val number = ContactHelper.getPhoneNumberByName(context, nameOrNumber)
+                if (number != null) return makeCall(context, number, nameOrNumber)
+                return if (digits.isNotEmpty()) "নাম্বারটি সঠিক নয়" else "দুঃখিত, $nameOrNumber পাওয়া যায়নি"
             }
         }
 
-        // --- 3. Camera Open Handler ---
-        val cameraKeywords = listOf("camera", "ক্যামেরা")
-        if (cameraKeywords.any { it in cmd }) {
-            if (cmd.contains("ওপেন") || cmd.contains("খুলো") || cmd.contains("খোলো") || 
-                cmd.contains("চালু") || cmd.contains("open") || words.size == 1) {
-                
-                val intent = Intent(context, CameraActivity::class.java)
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(intent)
-                return "ক্যামেরা ওপেন করা হচ্ছে"
-            }
-        }
-
-        // --- 4. YouTube & Google Search Handler ---
-        if (cmd.contains("youtube") || cmd.contains("ইউটিউব")) {
-            if (words.size <= 3 && !cmd.contains("open") && !cmd.contains("খুলো") && !cmd.contains("খোলো")) {
-                return "ইউটিউবে কি সার্চ করতে হবে?"
-            }
-        }
-        if (cmd.contains("google") || cmd.contains("গুগল")) {
-            if (words.size <= 3 && !cmd.contains("open") && !cmd.contains("খুলো") && !cmd.contains("খোলো")) {
-                return "গুগলে কি সার্চ করতে হবে?"
-            }
+        // ৪. সরাসরি নাম্বার বা নাম বললে কল (নতুন ফিচার)
+        val cleanInput = cmd.replace(Regex("[কে|রে]$"), "").trim()
+        val digitsOnly = cleanInput.replace(Regex("[^0-9]"), "")
+        
+        // সরাসরি ১১ ডিজিট (মাঝে স্পেস থাকলেও কাজ করবে)
+        if (digitsOnly.length == 11) {
+            return makeCall(context, digitsOnly, digitsOnly)
         }
         
-        // --- 5. Greetings ---
-        if (isGreeting(cmd)) {
-            return "হ্যালো, আমি আপনার কথা শুনছি।"
-        }
-
-        // --- 6. Typing Mode ---
-        if (cmd.contains("টাইপিং") || cmd.contains("typing") || cmd.contains("লিখতে চাই") || cmd.contains("লিখো")) {
-            return if (VoiceAccessibilityService.instance == null) {
-                "টাইপিং মোড ব্যবহারের জন্য অ্যাক্সেসিবিলিটি সার্ভিস অন করতে হবে। অ্যাপের হোম পেজ থেকে পারমিশন দিন।"
-            } else {
-                "টাইপিং মোড চালু করা হয়েছে। আপনি যা বলবেন তা টাইপ করা হবে।"
+        // সরাসরি কন্টাক্ট নাম (১-৩ শব্দের নাম হলে)
+        if (cmd.split(" ").size <= 3) {
+            val number = ContactHelper.getPhoneNumberByName(context, cleanInput)
+            if (number != null) {
+                return makeCall(context, number, cleanInput)
             }
         }
 
-        // --- 7. Send Message & Edit Handler ---
-        val sendKeywords = listOf("send", "পাঠাও", "মেসেজ পাঠাও", "পাঠিয়ে দাও", "সেন্ড", "send message", "পাঠান", "সেন্ড করো")
-        if (sendKeywords.any { cmd == it } || (sendKeywords.any { it in cmd } && !cmd.contains("open") && !cmd.contains("খুলো") && !cmd.contains("খোলো"))) {
-            return if (VoiceAccessibilityService.instance == null) {
-                "মেসেজ পাঠানোর জন্য অ্যাক্সেসিবিলিটি সার্ভিস অন থাকা প্রয়োজন।"
-            } else {
-                VoiceAccessibilityService.instance?.clickSend()
-                "মেসেজ পাঠানো হচ্ছে"
-            }
+        // ৫. স্ক্রল কমান্ড
+        if (listOf("up", "উপরে", "উঠো").any { cmd.containsWord(it) }) {
+            VoiceAccessibilityService.instance?.scrollUp()
+            return "উপরে যাওয়া হচ্ছে"
+        }
+        if (listOf("down", "নিচে", "নামো").any { cmd.containsWord(it) }) {
+            VoiceAccessibilityService.instance?.scrollDown()
+            return "নিচে যাওয়া হচ্ছে"
         }
 
-        // টেক্সট মুছে ফেলার কমান্ড
-        if (cmd == "মুছে ফেলো" || cmd == "মুছে ফেল" || cmd == "delete") {
-            VoiceAccessibilityService.instance?.deleteLastWord()
-            return "শেষ শব্দ মুছে ফেলা হয়েছে"
-        }
-        if (cmd == "সব মুছে ফেলো" || cmd == "clear all") {
-            VoiceAccessibilityService.instance?.clearAllText()
-            return "সব টেক্সট মুছে ফেলা হয়েছে"
-        }
+        // ৬. সাধারণ অ্যাপ ওপেন
+        var appName = cmd
+        openKeywords.forEach { appName = appName.replace(it, "") }
+        appName = appName.trim()
 
-        // --- 8. Date & Volume ---
-        if (cmd.contains("তারিখ") || cmd.contains("date") || cmd.contains("সময়") || cmd.contains("সময়") || cmd.contains("time")) {
-            return DateHelper.getCurrentDateBengali()
-        }
-        
-        if (cmd.contains("ভলিউম") || cmd.contains("volume") || cmd.contains("সাউন্ড") || cmd.contains("sound")) {
-            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            return if (cmd.contains("বাড়াও") || cmd.contains("up") || cmd.contains("বেশি")) {
-                audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI)
-                "ভলিউম বাড়ানো হয়েছে।"
-            } else {
-                audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI)
-                "ভলিউম কমানো হয়েছে।"
-            }
+        if (appName.isNotEmpty()) {
+            val mappedName = appNameMapping[appName] ?: appName
+            val apps = AppHelper.getAllInstalledApps(context)
+            val target = apps.find { it.name.contains(mappedName, true) || mappedName.contains(it.name, true) }
+            if (target != null) return AppHelper.openApp(context, listOf(target.packageName))
         }
 
-        // --- 9. Dynamic App Opener ---
-        val openKeywords = listOf("open", "খুলো", "খোলো", "ওপেন", "start", "খোল", "দেখা", "চালু")
-        val commonAppsMap = mapOf(
-            "facebook" to listOf("facebook", "ফেসবুক", "ফেইসবুক"),
-            "messenger" to listOf("messenger", "মেসেঞ্জার"),
-            "whatsapp" to listOf("whatsapp", "হোয়াটসঅ্যাপ", "ওয়াটসঅ্যাপ"),
-            "telegram" to listOf("telegram", "টেলিগ্রাম", "টেলীগ্রাম", "টেলি গ্রাম", "টেলিক্রাম", "thunderdog", "plus.messenger", "org.telegram"),
-            "gmail" to listOf("gmail", "জিমেইল"),
-            "chrome" to listOf("chrome", "ক্রোম"),
-            "settings" to listOf("settings", "সেটিংস", "সেটিং")
-        )
+        if (cmd.contains("সময়") || cmd.contains("time")) return DateHelper.getCurrentDateBengali()
+        if (listOf("বন্ধ", "কাটো", "exit").any { cmd.containsWord(it) }) return AppHelper.closeCurrentApp(context)
 
-        val installedApps = AppHelper.getAllInstalledApps(context)
-        var matchedApp: AppHelper.AppInfo? = null
-
-        // কমন অ্যাপ ম্যাচিং
-        for ((key, variations) in commonAppsMap) {
-            if (variations.any { it in cmd }) {
-                matchedApp = installedApps.find { 
-                    it.packageName.lowercase().contains(key) || 
-                    it.name.lowercase().contains(key)
-                }
-                if (matchedApp != null) break
-            }
-        }
-
-        // জেনারিক ম্যাচিং
-        if (matchedApp == null && (openKeywords.any { it in cmd } || words.size <= 2)) {
-            var cleanedName = cmd
-            openKeywords.forEach { cleanedName = cleanedName.replace(it, "") }
-            cleanedName = cleanedName.trim()
-
-            if (cleanedName.isNotEmpty()) {
-                matchedApp = installedApps.find { 
-                    val name = it.name.lowercase().replace(" ", "")
-                    val target = cleanedName.replace(" ", "")
-                    name == target || name.contains(target) || target.contains(name) || it.packageName.contains(target)
-                }
-            }
-        }
-
-        if (matchedApp != null) {
-            if (AppPreferenceHelper.isAppAllowed(context, matchedApp.packageName)) {
-                return AppHelper.openApp(context, listOf(matchedApp.packageName))
-            } else {
-                return "${matchedApp.name} ওপেন করার অনুমতি নেই। সেটিংস থেকে পারমিশন দিন।"
-            }
-        }
-
-        return "দুঃখিত, আমি এটি বুঝতে পারছি না।"
+        return "UNKNOWN_COMMAND"
     }
 
     fun isACommand(command: String): Boolean {
-        val cmd = command.lowercase().trim()
+        val cmd = convertBengaliDigits(command.lowercase().trim())
         val keywords = listOf(
-            "বন্ধ", "বন্ধ করো", "বন্ধ কর", "কাটো", "কেটে দাও", "ব্যাক", "খুলো", "খোলো", "ওপেন", "open", "চালু", "start",
-            "গুগল", "google", "ইউটিউবে", "youtube", "ফেসবুক", "facebook", "মেসেঞ্জার", "messenger",
-            "চার্জ", "ভলিউম", "সাউন্ড", "টাইপিং", "তারিখ", "সময়", "টাইম", "whatsapp", "জিমেইল", "gmail", 
-            "telegram", "টেলিগ্রাম", "টেলীগ্রাম", "টেলি গ্রাম", "ফেইসবুক", "বাহির", "কেটে", "বের হও", "camera", "ক্যামেরা", 
-            "close", "exit", "stop", "quit", "send", "পাঠাও", "মেসেজ পাঠাও", "সেন্ড", "মুছে ফেলো", "মুছে ফেল", "delete", "clear all", "bondho", "exit app"
+            "কল", "call", "ফোন", "phone", "টাইপিং", "typing", "উপরে", "up", "নিচে", "down", 
+            "সার্চ", "search", "ওপেন", "open", "খুলো", "খোলো", "বন্ধ", "stop", "exit", 
+            "খুঁজো", "দেখাও", "দেখবো", "ইউটিউব", "youtube", "গুগল", "google"
         )
-        return keywords.any { it in cmd }
+        
+        // যদি কি-ওয়ার্ড থাকে
+        if (keywords.any { cmd.contains(it) }) return true
+        
+        // যদি সরাসরি ১১ ডিজিটের নাম্বার হয়
+        val digits = cmd.replace(Regex("[^0-9]"), "")
+        if (digits.length == 11) return true
+        
+        // যদি শব্দের সংখ্যা ৩ বা তার কম হয় (সম্ভাব্য কন্টাক্ট নাম)
+        if (cmd.split(" ").size <= 3) return true
+        
+        return false
     }
 
-    fun isGreeting(command: String): Boolean {
-        val cmd = command.lowercase().trim()
-        val greetings = listOf("hello", "hi", "হ্যালো", "হাই")
-        return greetings.any { it in cmd }
-    }
+    fun isGreeting(command: String): Boolean = listOf("hello", "hi", "হ্যালো").any { cmd -> command.lowercase().contains(cmd) }
 }

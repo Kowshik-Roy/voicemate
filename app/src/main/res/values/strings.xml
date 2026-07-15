@@ -1,4 +1,4 @@
 <resources>
     <string name="app_name">Voice Mate</string>
-    <string name="accessibility_description">এই সার্ভিসটি ভয়েস কমান্ডের মাধ্যমে স্ক্রিন স্ক্রল করতে সাহায্য করে।</string>
+    <string name="accessibility_description">ভয়েস মেট আপনার ভয়েস কমান্ড অনুযায়ী বিভিন্ন অ্যাপে টাইপ করতে, মেসেজ পাঠাতে এবং স্ক্রিন নেভিগেট করতে এই সার্ভিসটি ব্যবহার করে। আমরা আপনার কোনো ব্যক্তিগত তথ্য সংগ্রহ বা সংরক্ষণ করি না।</string>
 </resources>
